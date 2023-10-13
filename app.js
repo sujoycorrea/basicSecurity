@@ -14,8 +14,6 @@ app.use(express.static("public"));
 
 app.use(bodyParser.urlencoded({extended:true}));
 
-console.log(process.env.API_KEY)
-
 // ---------setUp Database--------------
 
 mongoose.connect("mongodb://127.0.0.1:27017/userDB")
