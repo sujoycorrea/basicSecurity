@@ -1,8 +1,10 @@
+require('dotenv').config();
 const express = require("express");
 const app = express()
 const port = 3000;
 const bodyParser = require("body-parser");
 const lodash = require("lodash");
+const encrypt = require("mongoose-encryption");
 
 const { Schema, default: mongoose } = require("mongoose");
 const { PassThrough } = require("stream");
@@ -11,6 +13,8 @@ app.set("view engine", "ejs");
 app.use(express.static("public"));
 
 app.use(bodyParser.urlencoded({extended:true}));
+
+console.log(process.env.API_KEY)
 
 // ---------setUp Database--------------
 
@@ -29,6 +33,13 @@ const userSchema= new mongoose.Schema({
         required: [true, "Please provide password"]
     }
 })
+
+
+//------------encryption------------
+
+
+
+userSchema.plugin(encrypt, {secret: process.env.SECRET, encryptedFields:['password']})
 
 //-----------------setup Collections-----------
 
@@ -86,10 +97,14 @@ app.post("/login", async function(req, res){
     let password = req.body.password;
 
     try{
-       const user=  await User.findOne({$and: [{email:userName}, {password:password}]})
+       const user=  await User.findOne({email:userName})
         if (user){
-            console.log("User is found");
-            res.render("secrets");
+            if(user.password === password){
+                console.log("User is found");
+                res.render("secrets");
+            } else{
+                console.log("Found, but your password is wrong");
+            }
         } else{
             console.log("No match found, homie");
             res.send("There ain't no person like that here")
