@@ -1,5 +1,7 @@
 require('dotenv').config();
-const md5 = require('md5');
+// const md5 = require('md5');
+const bcrypt = require('bcrypt');
+const saltRounds = 10;
 const express = require("express");
 const app = express()
 const port = 3000;
@@ -70,40 +72,51 @@ app.get("/register", function(req, res){
 app.post("/register", async function(req, res){
 
     let userName = req.body.username;
-    let password = md5(req.body.password);
-    
-    const newUser = new User({
-        email: userName,
-        password: password
-    })
+    // let password = md5(req.body.password);
+    let password = req.body.password;
 
+    bcrypt.hash(password, saltRounds, async function(err, hash) {
+        const newUser = new User({
+            email: userName,
+            password: hash
+        })
     
-    try{
-        await newUser.save()
-        console.log("user is saved");
-        res.render("secrets");
-    }
-    catch(error){
-        console.log("user is not creted");
-        console.log(error.message);
-    }
+        
+        try{
+            await newUser.save()
+            console.log("user is saved");
+            res.render("secrets");
+        }
+        catch(error){
+            console.log("user is not creted");
+            console.log(error.message);
+        }
+    });
+    
+    
 })
 
 
 app.post("/login", async function(req, res){
 
     let userName = req.body.username;
-    let password = md5(req.body.password);
+    // let password = md5(req.body.password);
+    let password = req.body.password;
+
+    
 
     try{
        const user=  await User.findOne({email:userName})
         if (user){
-            if(user.password === password){
-                console.log("User is found");
-                res.render("secrets");
-            } else{
-                console.log("Found, but your password is wrong");
-            }
+            bcrypt.compare(password, user.password, async function(err, result) {
+                if(result){
+                    console.log("User is found");
+                    res.render("secrets");
+                } else{
+                    console.log("Found, but your password is wrong");
+                }
+            });
+            
         } else{
             console.log("No match found, homie");
             res.send("There ain't no person like that here")
