@@ -11,9 +11,12 @@ const lodash = require("lodash");
 const session = require('express-session');
 const passport = require('passport');
 const passportLocalMongoose = require('passport-local-mongoose');
+const GoogleStrategy = require("passport-google-oauth20").Strategy;
+const findOrCreate = require('mongoose-findorcreate');
 
 const { Schema, default: mongoose } = require("mongoose");
 const { PassThrough } = require("stream");
+
 
 app.set("view engine", "ejs");
 app.use(express.static("public"));
@@ -38,10 +41,13 @@ mongoose.connect("mongodb://127.0.0.1:27017/userDB")
 
 const userSchema= new mongoose.Schema({
     email: String,
-    password: String
+    password: String,
+    googleId: String,
+    secret: []
 })
 
 userSchema.plugin(passportLocalMongoose);   //This will be used to hash and salt our passwords
+userSchema.plugin(findOrCreate);
 
 //------------encryption------------
 
@@ -55,8 +61,41 @@ const User = new mongoose.model("user", userSchema);
 
 passport.use(User.createStrategy());
 
-passport.serializeUser(User.serializeUser());
-passport.deserializeUser(User.deserializeUser());
+passport.serializeUser(function(user, cb) {
+    process.nextTick(function() {
+      return cb(null, {
+        id: user.id,
+        username: user.username,
+        picture: user.picture
+      });
+    });
+  });
+  
+  passport.deserializeUser(function(user, cb) {
+    process.nextTick(function() {
+      return cb(null, user);
+    });
+  });
+
+passport.use(new GoogleStrategy({
+    clientID: process.env.CLIENT_ID,
+    clientSecret: process.env.CLIENT_SECRET,
+    callbackURL: "http://localhost:3000/auth/google/secrets",
+    userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo"   //This is for ensure the deprecation of Google Plus does not affect our code
+
+  },
+  function(accessToken, refreshToken, profile, cb) {
+    console.log(profile);
+    User.findOrCreate({ googleId: profile.id, email: profile.emails[0].value }, function (err, user) {
+      return cb(err, user);
+    });
+  }
+));
+
+
+// ----Variables-----------
+
+var userId;
 
 //----------GET----------------
 
@@ -75,13 +114,16 @@ app.get("/register", function(req, res){
     res.render("register");
 })
 
-app.get("/secrets", function(req, res){
+app.get("/secrets", async function(req, res){
     
     if(req.isAuthenticated()){
         res.render("secrets")
     } else{
         res.redirect("/login");
     }
+
+    // const response = await User.find({secret:{$ne: null}});
+    // console.log(response);
     
 })
 
@@ -93,6 +135,40 @@ app.get("/logout", function(req, res){
             res.redirect("/");
         }
     })
+})
+
+app.get("/auth/google", passport.authenticate("google", {scope: ["email", "profile"] }))
+
+app.get("/auth/google/secrets", passport.authenticate("google", {failureRedirect: "/login"}), function(req, res){
+    res.redirect("/secrets");
+})
+
+app.get("/submit", function(req, res){
+    if(req.isAuthenticated){
+        res.render("submit");
+    } else {
+        res.redirect("/login");
+    }
+})
+
+app.post("/submit", async function(req, res){
+    const submittedSecret = req.body.secret;
+    console.log(submittedSecret);
+    console.log(req.user.id);
+    const userData= await User.findOne({_id: req.user.id});
+    console.log(userData);
+    try{
+       const updatedUser = await User.updateOne({_id : req.user.id}, { $push: {secret: submittedSecret}});
+       console.log("User found and updated");
+       console.log(updatedUser);
+       res.redirect("/secrets");
+    }
+    catch (error){
+
+        console.log("user not found and not updated");
+        console.log(error);
+    }
+    
 })
 
 //--------------POST---------------------
